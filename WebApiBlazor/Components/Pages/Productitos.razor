@@ -1,0 +1,299 @@
+﻿@page "/productos"
+@using WebApiBlazor.Models
+@using WebApiBlazor.Services
+@inject ProductoService ProductoService
+@inject IJSRuntime JS
+
+<h3> Productos</h3>
+
+
+<div class="barra-acciones">
+    <div class="busqueda-id">
+        <input type="number" @bind="buscarId" placeholder="Buscar por ID..." />
+
+        <div>
+            <i class="bi bi-search"></i>
+            <button @onclick="BuscarPorId" class="btn btn-primary"> <i class="bi bi-search">Buscar</i></button>
+        </div>
+  
+        
+        @if (productoEncontrado != null)
+        {
+            <button class="btn-limpiar" @onclick="LimpiarBusqueda">✕ Limpiar</button>
+        }
+    </div>
+    <button class="btn-crear" @onclick="AbrirModalCrear">+ Nuevo producto</button>
+</div>
+
+@if (buscando)
+{
+    <p>Buscando...</p>
+}
+else if (busquedaRealizada && productoEncontrado == null)
+{
+    <p class="msg-error">No se encontró ningún producto con ID @buscarId.</p>
+}
+else if (productoEncontrado != null)
+{
+    <div class="resultado-busqueda">
+        <h4>Resultado — ID @productoEncontrado.Id</h4>
+        <div class="card card-detalle">
+            <img src="@ObtenerImagen(productoEncontrado)" alt="@productoEncontrado.Title" />
+            <div class="card-body">
+                <h5>@productoEncontrado.Title</h5>
+                <span class="categoria">@productoEncontrado.Category?.Name</span>
+                <p class="precio">$@productoEncontrado.Price</p>
+                <p class="descripcion">@productoEncontrado.Description</p>
+                <div class="card-acciones">
+                    <div>
+                        <i class="bi bi-pencil-square"></i>
+                        <button class="btn-editar" @onclick="() => AbrirModalEditar(productoEncontrado)"> Editar</button>
+                    </div>
+                    
+                    <button class="btn-eliminar" @onclick="() => Eliminar(productoEncontrado)"> Eliminar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+
+@if (cargando)
+{
+    <p>Cargando productos...</p>
+}
+else if (listaProductos.Count == 0 || listaProductos == null)
+{
+    <p>No hay productos para mostrar.</p>
+}
+else
+{
+    <div class="producto-grid">
+        @foreach (var p in listaProductos)
+        {
+            <div class="card">
+                <img src="@ObtenerImagen(p)" alt="@p.Title"
+                     onerror="this.src='https://placehold.co/600x400'" />
+                <div class="card-body">
+                    <span class="id-badge">ID: @p.Id</span>
+                    <h5>@p.Title</h5>
+                    <span class="categoria">@p.Category?.Name</span>
+                    <p class="precio">$@p.Price</p>
+                    <div class="card-acciones">
+                        <button class="btn-editar" @onclick="() => AbrirModalEditar(p)">Editar</button>
+                        <button class="btn-eliminar" @onclick="() => Eliminar(p)">Eliminar</button>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="paginacion">
+        <button @onclick="PaginaAnterior" disabled="@(paginaActual == 0)">← Anterior</button>
+        <span>Página @(paginaActual + 1)</span>
+        <button @onclick="PaginaSiguiente" disabled="@(listaProductos.Count < limite)">Siguiente →</button>
+    </div>
+}
+
+
+@if (mostrarModal)
+{
+    <div class="modal-backdrop" @onclick="CerrarModal">
+        <div class="modal-box" @onclick:stopPropagation>
+            <h4>@(modoEdicion ? " Editar producto" : "➕ Nuevo producto")</h4>
+
+            <label>Nombre</label>
+            <input @bind="formProducto.Title" placeholder="Nombre del producto" />
+
+            <label>Precio</label>
+            <input type="number" @bind="formProducto.Price" placeholder="0" />
+
+            <label>Descripción</label>
+            <textarea @bind="formProducto.Description" rows="3" placeholder="Descripción..."></textarea>
+
+            <label>Categoría ID</label>
+            <input type="number" @bind="formCategoriaId" placeholder="1" />
+
+            @if (!string.IsNullOrEmpty(errorForm))
+            {
+                <p class="msg-error">@errorForm</p>
+            }
+
+            <div class="modal-botones">
+                <button class="btn-cancelar" @onclick="CerrarModal">Cancelar</button>
+                <button class="btn-guardar" @onclick="GuardarProducto">
+                    @(modoEdicion ? "Guardar cambios" : "Crear")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    
+    private List<Producto> listaProductos = new();
+    private bool cargando = true;
+    private int paginaActual = 0;
+    private int limite = 10;
+
+  
+    private int buscarId;
+    private Producto? productoEncontrado;
+    private bool buscando = false;
+    private bool busquedaRealizada = false;
+
+   
+    private bool mostrarModal = false;
+    private bool modoEdicion = false;
+    private Producto formProducto = new();
+    private int formCategoriaId = 1;
+    private string errorForm = string.Empty;
+
+  
+ 
+    protected override async Task OnInitializedAsync()
+        => await CargarProductos();
+
+    
+    private async Task CargarProductos()
+    {
+        cargando = true;
+        try
+        {
+            listaProductos = await ProductoService.GetProductosAsync(paginaActual * limite, limite);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"Error: {e.Message}");
+        }
+        finally { cargando = false; }
+    }
+
+    private async Task PaginaSiguiente()
+    { paginaActual++; await CargarProductos(); }
+
+    private async Task PaginaAnterior()
+    { if (paginaActual > 0) { paginaActual--; await CargarProductos(); } }
+
+   
+    private async Task BuscarPorId()
+    {
+        if (buscarId <= 0) return;
+        buscando = true;
+        busquedaRealizada = false;
+        productoEncontrado = null;
+
+        productoEncontrado = await ProductoService.GetProductoPorIdAsync(buscarId);
+        busquedaRealizada = true;
+        buscando = false;
+    }
+
+    private void LimpiarBusqueda()
+    {
+        buscarId = 0;
+        productoEncontrado = null;
+        busquedaRealizada = false;
+    }
+
+    
+    private void AbrirModalCrear()
+    {
+        modoEdicion = false;
+        formProducto = new Producto { Images = new List<string> { "https://placehold.co/600x400" } };
+        formCategoriaId = 1;
+        errorForm = string.Empty;
+        mostrarModal = true;
+    }
+
+    private void AbrirModalEditar(Producto p)
+    {
+        modoEdicion = true;
+        
+        formProducto = new Producto
+        {
+            Id = p.Id,
+            Title = p.Title,
+            Price = p.Price,
+            Description = p.Description,
+            Category = p.Category,
+            Images = p.Images
+        };
+        formCategoriaId = p.Category?.Id ?? 1;
+        errorForm = string.Empty;
+        mostrarModal = true;
+    }
+
+    private async Task GuardarProducto()
+    {
+        if (string.IsNullOrWhiteSpace(formProducto.Title))
+        {
+            errorForm = "El nombre es obligatorio.";
+            return;
+        }
+
+        formProducto.Category = new Category { Id = formCategoriaId };
+
+        if (modoEdicion)
+        {
+            var resultado = await ProductoService.EditarProductoAsync(formProducto);
+            if (resultado != null)
+            {
+                
+                var idx = listaProductos.FindIndex(p => p.Id == formProducto.Id);
+                if (idx >= 0) listaProductos[idx] = resultado;
+
+                CerrarModal();
+                await JS.InvokeVoidAsync("mostrarAlerta", "success", "¡Actualizado!", $"{resultado.Title} fue modificado.");
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("mostrarAlerta", "error", "Error", "No se pudo actualizar el producto.");
+            }
+        }
+        else
+        {
+            var creado = await ProductoService.CrearProductoAsync(formProducto);
+            if (creado != null)
+            {
+                listaProductos.Insert(0, creado);
+                CerrarModal();
+                await JS.InvokeVoidAsync("mostrarAlerta", "success", "¡Creado!", $"{creado.Title} fue agregado (ID: {creado.Id}).");
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("mostrarAlerta", "error", "Error", "No se pudo crear el producto.");
+            }
+        }
+    }
+
+    private void CerrarModal()
+    {
+        mostrarModal = false;
+        errorForm = string.Empty;
+    }
+
+    
+    private async Task Eliminar(Producto p)
+    {
+        bool confirmado = await JS.InvokeAsync<bool>("confirmarEliminar", p.Title);
+        if (!confirmado) return;
+
+        bool ok = await ProductoService.EliminarProductoAsync(p.Id);
+        if (ok)
+        {
+            listaProductos.RemoveAll(x => x.Id == p.Id);
+            if (productoEncontrado?.Id == p.Id)
+                productoEncontrado = null;
+
+            await JS.InvokeVoidAsync("mostrarAlerta", "success", "Eliminado", $"{p.Title} fue eliminado.");
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("mostrarAlerta", "error", "Error", "No se pudo eliminar el producto.");
+        }
+    }
+
+  
+    private string ObtenerImagen(Producto p)
+        => (p.Images != null && p.Images.Count > 0) ? p.Images[0] : "https://placehold.co/600x400";
+}
