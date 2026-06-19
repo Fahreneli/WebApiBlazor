@@ -64,7 +64,10 @@ else if (productoEncontrado != null)
 }
 else if (listaProductos.Count == 0 || listaProductos == null)
 {
-    <p>No hay productos para mostrar.</p>
+    <p>
+         No se encontraron productos. La API puede estar sin datos en este momento.
+        <button @onclick="CargarProductos"> Reintentar</button>
+    </p>
 }
 else
 {

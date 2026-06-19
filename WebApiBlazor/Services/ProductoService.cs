@@ -67,14 +67,19 @@ namespace WebApiBlazor.Services
         }
 
         // PUT
-        
-
         public async Task<Producto?> EditarProductoAsync(Producto editado)
         {
-            var response = await _http.PutAsJsonAsync($"/products/{editado.Id}", editado);
+            var response = await _http.PutAsJsonAsync($"products/{editado.Id}", new
+            {
+                title = editado.Title,
+                price = editado.Price,
+                description = editado.Description,
+                images = editado.Images ?? new List<string> { "https://placehold.co/600x400" },
+                categoryId = editado.Category?.Id ?? 1
+            });
+
             if (response.IsSuccessStatusCode)
             {
-
                 var idx = ProductosTraidos.FindIndex(p => p.Id == editado.Id);
                 if (idx >= 0)
                     ProductosTraidos[idx] = editado;
